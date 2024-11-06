@@ -751,6 +751,10 @@ static void gptp_update_local_port_clock(void)
 	struct net_ptp_time tm;
 	unsigned int key;
 
+	uint64_t sync_receipt_ts;
+	uint64_t sync_receipt_local_ts;
+	int64_t sync_offset_ts;
+
 	state = &GPTP_STATE()->clk_slave_sync;
 	global_ds = GPTP_GLOBAL_DS();
 	port = state->pss_rcv_ptr->local_port_number;
@@ -762,6 +766,12 @@ static void gptp_update_local_port_clock(void)
 	if (!port_ds->neighbor_rate_ratio_valid) {
 		return;
 	}
+
+	sync_receipt_ts = global_ds->sync_receipt_time.second * NSEC_PER_SEC +
+			  (global_ds->sync_receipt_time.fract_nsecond >> 16);
+	sync_receipt_local_ts = global_ds->sync_receipt_local_time;
+	sync_offset_ts = sync_receipt_ts - sync_receipt_local_ts;
+	state->master_time_offset = sync_offset_ts;
 
 	port_ds->neighbor_rate_ratio_valid = false;
 

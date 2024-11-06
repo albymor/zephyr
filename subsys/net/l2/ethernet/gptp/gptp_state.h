@@ -381,6 +381,9 @@ struct gptp_clk_slave_sync_state {
 
 	/** The local clock has expired. */
 	bool rcvd_local_clk_tick;
+
+	/** The offset from the master */
+	int64_t master_time_offset;
 };
 
 /* ClockMasterSyncOffset state machine variables. */
