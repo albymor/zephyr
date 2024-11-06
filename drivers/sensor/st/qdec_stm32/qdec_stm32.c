@@ -39,6 +39,9 @@ struct qdec_stm32_dev_cfg {
 /* Device run time data */
 struct qdec_stm32_dev_data {
 	int32_t position;
+	float rpm;
+	uint32_t prevoius_counter_value;
+	int64_t last_time;
 };
 
 static int qdec_stm32_fetch(const struct device *dev, enum sensor_channel chan)
@@ -46,10 +49,14 @@ static int qdec_stm32_fetch(const struct device *dev, enum sensor_channel chan)
 	struct qdec_stm32_dev_data *dev_data = dev->data;
 	const struct qdec_stm32_dev_cfg *dev_cfg = dev->config;
 	uint32_t counter_value;
+	int64_t current_time, time_diff;
 
-	if ((chan != SENSOR_CHAN_ALL) && (chan != SENSOR_CHAN_ROTATION)) {
+	if ((chan != SENSOR_CHAN_ALL) && (chan != SENSOR_CHAN_ROTATION) &&
+	    (chan != SENSOR_CHAN_RPM)) {
 		return -ENOTSUP;
 	}
+
+
 
 	/* We're only interested in the remainder between the current counter value and
 	 * counts_per_revolution. The integer part represents an entire rotation so it
@@ -58,7 +65,24 @@ static int qdec_stm32_fetch(const struct device *dev, enum sensor_channel chan)
 	counter_value = LL_TIM_GetCounter(dev_cfg->timer_inst) % dev_cfg->counts_per_revolution;
 	dev_data->position = (counter_value * 360) / dev_cfg->counts_per_revolution;
 
+	/* Get the current time in microseconds (or appropriate time unit) */
+	current_time = k_uptime_get();  // Zephyr function to get time in ms
+
+	/* Calculate time difference in milliseconds */
+	time_diff = current_time - dev_data->last_time;
+
+	uint32_t current_counter_value = LL_TIM_GetCounter(dev_cfg->timer_inst);
+	int32_t delta_counter = current_counter_value - dev_data->prevoius_counter_value;
+
+	/* Calculate RPM: (delta_counter / counts_per_revolution) * (60000 / time_diff) */
+	dev_data->rpm = (delta_counter * 60000.0) / (dev_cfg->counts_per_revolution * time_diff);
+
+	/* Update last counter and last time */
+	dev_data->prevoius_counter_value = current_counter_value;
+	dev_data->last_time = current_time;
+
 	return 0;
+
 }
 
 static int qdec_stm32_get(const struct device *dev, enum sensor_channel chan,
@@ -69,7 +93,11 @@ static int qdec_stm32_get(const struct device *dev, enum sensor_channel chan,
 	if (chan == SENSOR_CHAN_ROTATION) {
 		val->val1 = dev_data->position;
 		val->val2 = 0;
-	} else {
+	} else if (chan == SENSOR_CHAN_RPM) {
+		val->val1 = (int32_t)dev_data->rpm;
+		val->val2 = (int32_t)((dev_data->rpm - val->val1) * 1e6);
+	} 
+	else{
 		return -ENOTSUP;
 	}
 
